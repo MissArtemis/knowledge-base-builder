@@ -1,5 +1,6 @@
 from langchain_community.vectorstores import FAISS
 from langchain_core.documents import Document
+from sentence_transformers import CrossEncoder
 import os
 import json
 
@@ -11,6 +12,11 @@ class RAGService:
     def __init__(self):
         self.config = ConfigManager()
         self.recall_embeddings = CustomEmbeddings(self.config.recall_base_model)
+        # 初始化重排序模型
+        self.reranker = CrossEncoder(
+            self.config.rerank_base_model,
+            automodel_args={"torch_dtype": "auto"},
+        )
 
     def build_document_recall_indexing(self, text_list):
         """
@@ -98,3 +104,37 @@ class RAGService:
         recalled_texts = [result.page_content for result in results]
 
         return recalled_texts
+
+    def rerank_related_document(self, query, documents, top_n=10):
+        """
+        使用CrossEncoder对文档进行重排序
+
+        Args:
+            query: 查询文本
+            documents: 文档列表
+            top_n: 返回的top n文档数量
+
+        Returns:
+            重排序后的top n文档列表
+        """
+        if not documents:
+            return []
+
+        if len(documents) <= top_n:
+            # 如果文档数量不超过top_n，仍然进行重排序
+            top_n = len(documents)
+
+        # 构建查询-文档对
+        pairs = [[query, doc] for doc in documents]
+
+        # 使用CrossEncoder计算相关性分数
+        scores = self.reranker.predict(pairs)
+
+        # 将文档和分数配对并按分数降序排序
+        doc_score_pairs = list(zip(documents, scores))
+        doc_score_pairs.sort(key=lambda x: x[1], reverse=True)
+
+        # 返回top n个文档
+        reranked_documents = [doc for doc, score in doc_score_pairs[:top_n]]
+
+        return reranked_documents

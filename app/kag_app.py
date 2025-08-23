@@ -1,7 +1,7 @@
 import os
 
 from tqdm import tqdm
-
+import pandas as pd
 from service.llm import LLMService
 from service.rag import RAGService
 from utils.config import ConfigManager
@@ -18,7 +18,7 @@ class KAGApp:
         self.llm_service = LLMService()
         self.rag_service = RAGService()
 
-    def run(self):
+    def build(self):
         print("KAG app starting...")
         doc_df = self.db.doc_data.head(10)
 
@@ -65,7 +65,7 @@ class KAGApp:
             # 将当前行的结果添加到累积列表中，供下一行使用
             accumulated_indexing_terms.extend(indexing_terms)
             print(f"Accumulated indexing terms count: {len(accumulated_indexing_terms)}")
-
+        self.rag_service.build_document_recall_indexing(accumulated_indexing_terms)
         # 将结果添加到DataFrame
         doc_df['indexing_terms'] = indexing_results
 
@@ -76,8 +76,41 @@ class KAGApp:
 
         print(doc_df[['text', 'indexing_terms']].head())
 
+        indexing_df = doc_df.explode('indexing_terms')[['text', 'indexing_terms']].reset_index(drop=True)
+        print(indexing_df)
+        indexing_df.to_pickle(self.config.kb_indexing_path)
+
+    def query(self, query_text):
+        if not os.path.exists(self.config.kb_indexing_path):
+            raise ValueError(f"Indexing file does not exist: {self.config.kb_indexing_path}, please run build() first.")
+
+        indexing_df = pd.read_pickle(self.config.kb_indexing_path)
+        print(f"Loaded indexing data with {len(indexing_df)} entries.")
+
+        # 使用RAG召回相关的top 20 indexing_terms
+        self.rag_service.build_document_recall_indexing(indexing_df['indexing_terms'].tolist())
+        recalled_terms = self.rag_service.recall_related_document(
+            query=query_text,
+            top_n=20
+        )
+        print(f"Recalled {len(recalled_terms)} terms for the query.")
+
+        # 使用rerank对召回的terms进行重排序，取top 5
+        reranked_terms = self.rag_service.rerank_related_document(
+            query=query_text,
+            documents=recalled_terms,
+            top_n=5
+        )
+        print(f"Reranked to {len(reranked_terms)} top terms.")
+
+        # 过滤DataFrame以获取这些top 5 indexing terms对应的行
+        relevant_rows = indexing_df[indexing_df['indexing_terms'].isin(reranked_terms)]
+        print(f"Found {len(relevant_rows)} relevant rows in the indexing data.")
+
+        return relevant_rows
+
 
 
 if __name__ == "__main__":
     app = KAGApp()
-    app.run()
+    app.build()
