@@ -21,7 +21,7 @@ class KAGApp:
 
     def build(self):
         print("KAG app starting...")
-        doc_df = self.db.doc_data.head(20)
+        doc_df = self.db.doc_data.head(25)
 
         # Store accumulated indexing terms
         accumulated_indexing_terms = []
