@@ -3,21 +3,21 @@ import os
 
 class ConfigManager:
     def __init__(self, file_path: str = None):
-        # 获取项目根目录的绝对路径
+        # Get the absolute path of the project root directory
         current_file_dir = os.path.dirname(os.path.abspath(__file__))
-        self.project_root = os.path.dirname(current_file_dir)  # 只向上退一级到knowledge-base-builder
+        self.project_root = os.path.dirname(current_file_dir)  # Go up one level to knowledge-base-builder
 
-        # 如果没有指定配置文件路径，使用默认路径
+        # If no config file path is specified, use the default path
         if file_path is None:
             file_path = os.path.join(self.project_root, 'resources', 'config.properties')
 
         self._props = {}
         self._load_properties(file_path)
 
-        # 设置属性，并将相对路径转换为绝对路径
+        # Set attributes and convert relative paths to absolute paths
         for key, value in self._props.items():
             if key.endswith('_path') and not os.path.isabs(value):
-                # 将相对路径转换为基于项目根目录的绝对路径
+                # Convert relative paths to absolute paths based on project root directory
                 value = os.path.join(self.project_root, value)
             setattr(self, key, value)
 

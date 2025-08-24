@@ -32,3 +32,25 @@ Your answer should be in the following format:
 <taxonomy_terms>...</taxonomy_terms>
 """
         return prompt
+
+
+    def build_best_taxonomy_indexing_prompt(self, candidate_terms, text):
+        prompt = f"""
+You are an expert in taxonomy indexing.
+Your task is to filter and select the best taxonomy terms from the provided candidate terms based on the content of the given text.
+A taxonomy term are in at most 5 levels, separated by ' -> '. For the first level, it should be a broad category, and each subsequent level should be a more specific subcategory.
+Here is a list of candidate taxonomy terms:
+<existing_taxonomy_terms>
+{candidate_terms}
+</existing_taxonomy_terms>
+Here is the text to analyze:
+<text>
+{text}
+</text>
+You need to pick the best taxonomy terms that accurately reflect the content of the text and give the index of the term in the candidate list.
+If there are multiple terms that are equally relevant, you need to split them with comma.
+Your answer should be in the following format:
+<best_taxonomy_terms>index1,index2,...</best_taxonomy_terms>
+
+"""
+        return prompt

@@ -12,7 +12,7 @@ class RAGService:
     def __init__(self):
         self.config = ConfigManager()
         self.recall_embeddings = CustomEmbeddings(self.config.recall_base_model)
-        # 初始化重排序模型
+        # Initialize rerank model
         self.reranker = CrossEncoder(
             self.config.rerank_base_model,
             automodel_args={"torch_dtype": "auto"},
@@ -20,12 +20,12 @@ class RAGService:
 
     def build_document_recall_indexing(self, text_list):
         """
-        构建文档召回索引并保存到文件
+        Build document recall index and save to file
 
         Args:
-            text_list: 文本列表
+            text_list: List of texts
         """
-        # 去重并保留原始索引映射
+        # Deduplicate and keep original index mapping
         unique_texts = []
         original_indices = []
         seen_texts = set()
@@ -36,17 +36,17 @@ class RAGService:
                 original_indices.append(idx)
                 seen_texts.add(text)
 
-        # 创建文档对象
+        # Create document objects
         documents = [Document(page_content=text, metadata={'original_index': original_indices[idx]})
                     for idx, text in enumerate(unique_texts)]
 
-        # 使用FAISS创建向量存储
+        # Create vector store using FAISS
         vector_store = FAISS.from_documents(documents, self.recall_embeddings)
 
-        # 保存FAISS索引到文件
+        # Save FAISS index to file
         vector_store.save_local(self.config.recall_index_save_path)
 
-        # 保存文本列表和索引映射到文件
+        # Save text list and index mapping to file
         text_data = {
             'texts': unique_texts,
             'original_indices': original_indices
@@ -55,86 +55,86 @@ class RAGService:
         with open(text_save_path, 'w', encoding='utf-8') as f:
             json.dump(text_data, f, ensure_ascii=False, indent=2)
 
-        print(f"成功构建了包含 {len(documents)} 个文档的向量索引")
-        print(f"FAISS索引已保存到: {self.config.recall_index_save_path}")
-        print(f"文本数据已保存到: {text_save_path}")
+        print(f"Successfully built vector index containing {len(documents)} documents")
+        print(f"FAISS index saved to: {self.config.recall_index_save_path}")
+        print(f"Text data saved to: {text_save_path}")
 
     def recall_related_document(self, query, top_n=10, search_type='mmr', lambda_mult=0.25):
         """
-        从文件加载FAISS索引并召回相关文档
+        Load FAISS index from file and recall related documents
 
         Args:
-            query: 查询文本
-            top_n: 返回的文档数量
-            search_type: 搜索类型
-            lambda_mult: 多样性参数
+            query: Query text
+            top_n: Number of documents to return
+            search_type: Search type
+            lambda_mult: Diversity parameter
 
         Returns:
-            召回的相关文档文本列表
+            List of recalled related document texts
         """
-        # 检查索引文件是否存在
+        # Check if index file exists
         if not os.path.exists(self.config.recall_index_save_path):
-            raise ValueError(f"FAISS索引文件不存在: {self.config.recall_index_save_path}，请先调用build_document_recall_indexing构建索引")
+            raise ValueError(f"FAISS index file does not exist: {self.config.recall_index_save_path}, please call build_document_recall_indexing first to build the index")
 
-        # 检查文本数据文件是否存在
+        # Check if text data file exists
         text_save_path = os.path.join(os.path.dirname(self.config.recall_index_save_path), 'text_data.json')
         if not os.path.exists(text_save_path):
-            raise ValueError(f"文本数据文件不存在: {text_save_path}，请先调用build_document_recall_indexing构建索引")
+            raise ValueError(f"Text data file does not exist: {text_save_path}, please call build_document_recall_indexing first to build the index")
 
-        # 从文件加载FAISS索引
+        # Load FAISS index from file
         vector_store = FAISS.load_local(self.config.recall_index_save_path, self.recall_embeddings,
                                          allow_dangerous_deserialization=True)
 
-        # 从文件加载文本数据
+        # Load text data from file
         with open(text_save_path, 'r', encoding='utf-8') as f:
             text_data = json.load(f)
 
         texts = text_data['texts']
 
-        # 创建检索器
+        # Create retriever
         retriever = vector_store.as_retriever(
             search_type=search_type,
             search_kwargs={'k': top_n, 'lambda_mult': lambda_mult, 'fetch_k': top_n}
         )
 
-        # 获取相关文档
+        # Get relevant documents
         results = retriever.get_relevant_documents(query)
 
-        # 提取召回的文本
+        # Extract recalled texts
         recalled_texts = [result.page_content for result in results]
 
         return recalled_texts
 
     def rerank_related_document(self, query, documents, top_n=10):
         """
-        使用CrossEncoder对文档进行重排序
+        Rerank documents using CrossEncoder
 
         Args:
-            query: 查询文本
-            documents: 文档列表
-            top_n: 返回的top n文档数量
+            query: Query text
+            documents: List of documents
+            top_n: Number of top n documents to return
 
         Returns:
-            重排序后的top n文档列表
+            List of top n documents after reranking
         """
         if not documents:
             return []
 
         if len(documents) <= top_n:
-            # 如果文档数量不超过top_n，仍然进行重排序
+            # If document count doesn't exceed top_n, still perform reranking
             top_n = len(documents)
 
-        # 构建查询-文档对
+        # Build query-document pairs
         pairs = [[query, doc] for doc in documents]
 
-        # 使用CrossEncoder计算相关性分数
+        # Use CrossEncoder to calculate relevance scores
         scores = self.reranker.predict(pairs)
 
-        # 将文档和分数配对并按分数降序排序
+        # Pair documents with scores and sort by score in descending order
         doc_score_pairs = list(zip(documents, scores))
         doc_score_pairs.sort(key=lambda x: x[1], reverse=True)
 
-        # 返回top n个文档
+        # Return top n documents
         reranked_documents = [doc for doc, score in doc_score_pairs[:top_n]]
 
         return reranked_documents
