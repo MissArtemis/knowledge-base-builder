@@ -6,6 +6,7 @@ from service.llm import LLMService
 from service.rag import RAGService
 from utils.config import ConfigManager
 from utils.db.mock_db import MockDB
+from utils.taxonomy_visualizer import visualize_taxonomy_from_dataframe
 
 tqdm.pandas()
 
@@ -20,7 +21,7 @@ class KAGApp:
 
     def build(self):
         print("KAG app starting...")
-        doc_df = self.db.doc_data.head(10)
+        doc_df = self.db.doc_data.head(20)
 
         # Store accumulated indexing terms
         accumulated_indexing_terms = []
@@ -113,11 +114,66 @@ class KAGApp:
 
         return relevant_rows
 
+    def visualize_taxonomy(self, save_html=True):
+        """Visualize taxonomy tree structure"""
+        if not os.path.exists(self.config.kb_indexing_path):
+            raise ValueError(f"Indexing file does not exist: {self.config.kb_indexing_path}, please run build() first.")
+
+        # Load indexing data
+        indexing_df = pd.read_pickle(self.config.kb_indexing_path)
+        print(f"Loaded indexing data with {len(indexing_df)} entries.")
+
+        # Create visualization
+        charts = visualize_taxonomy_from_dataframe(indexing_df)
+
+        # Display statistics information
+        stats = charts['visualizer'].generate_statistics()
+        print(f"\n=== Taxonomy Statistics ===")
+        print(f"Total terms count: {stats['total_terms']}")
+        print(f"Level distribution: {dict(stats['level_distribution'])}")
+        print(f"Depth distribution: {dict(stats['depth_distribution'])}")
+        print(f"Top 5 level-1 categories: {dict(stats['top_level1_categories'].most_common(5))}")
+
+        if save_html:
+            # Save HTML files
+            output_dir = os.path.join(self.config.project_root, 'visualization_output')
+            os.makedirs(output_dir, exist_ok=True)
+
+            charts['sunburst'].write_html(os.path.join(output_dir, 'taxonomy_sunburst.html'))
+            charts['treemap'].write_html(os.path.join(output_dir, 'taxonomy_treemap.html'))
+            charts['network'].write_html(os.path.join(output_dir, 'taxonomy_network.html'))
+            charts['statistics'].write_html(os.path.join(output_dir, 'taxonomy_statistics.html'))
+
+            print(f"\nVisualization files saved to: {output_dir}")
+            print("- taxonomy_sunburst.html: Sunburst chart")
+            print("- taxonomy_treemap.html: Treemap chart")
+            print("- taxonomy_network.html: Network graph")
+            print("- taxonomy_statistics.html: Statistical analysis chart")
+
+        # Display charts in browser
+        print("\nDisplaying visualization charts...")
+        charts['sunburst'].show()
+        charts['treemap'].show()
+        charts['network'].show()
+        charts['statistics'].show()
+
+        return charts
+
 
 
 if __name__ == "__main__":
     app = KAGApp()
-    app.build()
+
+    # Check if indexing has been built
+    if not os.path.exists(app.config.kb_indexing_path):
+        print("Building knowledge base index...")
+        app.build()
+
+    # Visualize taxonomy tree
+    print("\nStarting taxonomy tree structure visualization...")
+    charts = app.visualize_taxonomy(save_html=True)
+
+    # Execute query example
     query = "social security and tax"
     results = app.query(query)
     print(f"\nQuery results for '{query}':")

@@ -11,7 +11,7 @@ class LLMService:
 
     def generate_taxonomy_indexing(self, text:str, candidate_indexing:list) -> list:
         if not candidate_indexing:
-            candidate_indexing = ["contract -> breach of contract -> remedies -> damages -> punitive damages"]
+            candidate_indexing = ["contract -> breach of contract -> remedies -> damages -> punitive damages", "Personal Injury -> Negligence -> Duty of Care -> Damages", "Intellectual Property -> Copyright Infringement -> Fair Use", "Criminal Law -> Theft -> Burglary", "Family Law -> Divorce -> Child Custody"]
         prompt = self.prompt_service.build_taxonomy_indexing_prompt(
             candidate_terms="\n".join(candidate_indexing),
             text=text
